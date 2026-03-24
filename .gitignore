@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+.idea/
+.vscode/
+.env
+.DS_Store
+Thumbs.db
+backend/storage/uploads/*
+backend/storage/metadata/*
+backend/storage/exports/*
+!backend/storage/uploads/.gitkeep
+!backend/storage/metadata/.gitkeep
+!backend/storage/exports/.gitkeep
