@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eltel Pole Prototype</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Eltel Pole Prototype</h1>
+
+    <section class="card">
+      <h2>1. Lataa tarjousaineisto</h2>
+      <input type="file" id="fileInput" />
+      <button id="uploadBtn">Lataa</button>
+      <p id="uploadResult"></p>
+    </section>
+
+    <section class="card">
+      <h2>2. Dokumentit</h2>
+      <button id="refreshDocsBtn">Päivitä lista</button>
+      <ul id="documentsList"></ul>
+    </section>
+
+    <section class="card">
+      <h2>3. Valittu dokumentti</h2>
+      <input type="text" id="documentIdInput" placeholder="Syötä document_id" />
+      <div class="button-row">
+        <button id="analyzeBtn">Analysoi</button>
+        <button id="loadPolesBtn">Lataa pylväsrivit</button>
+        <button id="matchBtn">Matchaa</button>
+        <button id="calculateBtn">Laske massat</button>
+        <button id="summaryBtn">Hae yhteenveto</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>4. Tunnistetut pylväsrivit</h2>
+      <table id="polesTable">
+        <thead>
+          <tr>
+            <th>Valitse</th>
+            <th>Rivi</th>
+            <th>Pylväsnumero</th>
+            <th>Tyyppi</th>
+            <th>Korkeus</th>
+            <th>Vaiheväli</th>
+            <th>Harukset</th>
+            <th>Määrä</th>
+            <th>Status</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>5. Korjaa valittu rivi</h2>
+      <p id="selectedRowInfo">Ei valittua riviä.</p>
+      <div class="form-grid">
+        <input type="text" id="editPoleCode" placeholder="Pylväsnumero" />
+        <input type="text" id="editPoleType" placeholder="Pylvästyyppi" />
+        <input type="number" step="0.1" id="editSupportHeight" placeholder="Pylväskorkeus" />
+        <input type="number" step="0.1" id="editSpan" placeholder="Vaiheväli" />
+        <input type="text" id="editGuying" placeholder="Harukset" />
+        <input type="number" id="editQuantity" placeholder="Määrä" />
+        <input type="text" id="editSelectedPoolId" placeholder="Valittu pool_id (valinnainen)" />
+        <input type="text" id="editNote" placeholder="Huomio" />
+      </div>
+      <button id="saveCorrectionBtn">Tallenna korjaus</button>
+      <p id="correctionResult"></p>
+    </section>
+
+    <section class="card">
+      <h2>6. Tulokset</h2>
+      <pre id="output"></pre>
+    </section>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
