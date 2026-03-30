@@ -15,7 +15,11 @@ class ReviewItem(BaseModel):
     pole_code: str | None = None
     pole_type: str | None = None
     review_status: str
-    reason: str
+    match_status: str | None = None
+    calculation_status: str | None = None
+    suggested_pool_id: str | None = None
+    selected_pool_id: str | None = None
+    reasons: list[str] = Field(default_factory=list)
 
 
 class DocumentSummary(BaseModel):

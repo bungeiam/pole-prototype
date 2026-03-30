@@ -1,6 +1,7 @@
 from app.models.calculation import MassCalculationResult
 from app.models.match import PoleMatch, PolePoolItem
 from app.models.pole import DetectedPoleRow
+from app.repositories.in_memory_store import CORRECTIONS_BY_ROW
 
 
 class MassCalculationService:
@@ -17,7 +18,17 @@ class MassCalculationService:
 
         for match in matches:
             row = rows_by_id[match.row_id]
-            if not match.suggested_pool_id or match.suggested_pool_id not in pool_by_id:
+            correction = CORRECTIONS_BY_ROW.get(row.row_id)
+
+            selected_pool_id: str | None = None
+
+            # Käyttäjän manuaalinen hyväksyntä ohittaa automaattisen statuksen.
+            if correction and correction.selected_pool_id:
+                selected_pool_id = correction.selected_pool_id
+            elif match.status == "matched":
+                selected_pool_id = match.suggested_pool_id
+
+            if not selected_pool_id or selected_pool_id not in pool_by_id:
                 results.append(
                     MassCalculationResult(
                         row_id=row.row_id,
@@ -27,7 +38,7 @@ class MassCalculationService:
                 )
                 continue
 
-            item = pool_by_id[match.suggested_pool_id]
+            item = pool_by_id[selected_pool_id]
             total_mass = item.unit_mass_kg * row.quantity
 
             results.append(

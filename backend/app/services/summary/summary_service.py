@@ -1,9 +1,11 @@
 from collections import defaultdict
-from app.models.summary import DocumentSummary, SummaryRow, ReviewItem
+
+from app.models.summary import DocumentSummary, ReviewItem, SummaryRow
 from app.repositories.in_memory_store import (
-    POLES_BY_DOCUMENT,
-    MATCHES_BY_DOCUMENT,
     CALCULATIONS_BY_DOCUMENT,
+    CORRECTIONS_BY_ROW,
+    MATCHES_BY_DOCUMENT,
+    POLES_BY_DOCUMENT,
 )
 from app.repositories.pole_pool_repository import PolePoolRepository
 
@@ -18,6 +20,9 @@ class SummaryService:
         pool_items = PolePoolRepository().load_all()
         pool_by_id = {item.pool_id: item for item in pool_items}
 
+        match_by_row_id = {match.row_id: match for match in matches}
+        calculation_by_row_id = {calc.row_id: calc for calc in calculations}
+
         matched_rows = sum(1 for item in matches if item.status == "matched")
         ambiguous_rows = sum(1 for item in matches if item.status == "ambiguous")
         unmatched_rows = sum(1 for item in matches if item.status == "unmatched")
@@ -26,29 +31,33 @@ class SummaryService:
         incomplete_rows = sum(1 for item in calculations if item.status == "incomplete")
 
         total_quantity = sum(row.quantity for row in poles)
-        total_mass = round(sum((item.total_mass_kg or 0) for item in calculations), 2)
+        total_mass = round(
+            sum((item.total_mass_kg or 0) for item in calculations if item.status == "calculated"),
+            2,
+        )
 
-        grouped: dict[str, dict] = defaultdict(lambda: {
-            "pool_id": None,
-            "pole_type": None,
-            "quantity": 0,
-            "unit_mass_kg": None,
-            "total_mass_kg": 0.0,
-        })
+        grouped: dict[str, dict] = defaultdict(
+            lambda: {
+                "pool_id": None,
+                "pole_type": None,
+                "quantity": 0,
+                "unit_mass_kg": None,
+                "total_mass_kg": 0.0,
+            }
+        )
 
         for calc in calculations:
-            key = calc.pool_id or "UNMATCHED"
-            group = grouped[key]
+            if calc.status != "calculated" or not calc.pool_id:
+                continue
 
+            group = grouped[calc.pool_id]
             group["pool_id"] = calc.pool_id
             group["quantity"] += calc.quantity
             group["unit_mass_kg"] = calc.unit_mass_kg
             group["total_mass_kg"] += calc.total_mass_kg or 0.0
 
-            if calc.pool_id and calc.pool_id in pool_by_id:
+            if calc.pool_id in pool_by_id:
                 group["pole_type"] = pool_by_id[calc.pool_id].pole_type
-            else:
-                group["pole_type"] = "UNMATCHED"
 
         rows_by_pool = [
             SummaryRow(
@@ -56,7 +65,7 @@ class SummaryService:
                 pole_type=value["pole_type"],
                 quantity=value["quantity"],
                 unit_mass_kg=value["unit_mass_kg"],
-                total_mass_kg=round(value["total_mass_kg"], 2) if value["total_mass_kg"] else None,
+                total_mass_kg=round(value["total_mass_kg"], 2),
             )
             for value in grouped.values()
         ]
@@ -64,42 +73,55 @@ class SummaryService:
         review_items: list[ReviewItem] = []
 
         for row in poles:
-            reasons = row.raw_data.get("_review_reasons", []) if isinstance(row.raw_data, dict) else []
+            reasons: list[str] = []
+            seen_reasons: set[str] = set()
+
+            def add_reason(reason: str | None) -> None:
+                if not reason:
+                    return
+                cleaned = reason.strip()
+                if not cleaned or cleaned in seen_reasons:
+                    return
+                seen_reasons.add(cleaned)
+                reasons.append(cleaned)
+
+            match = match_by_row_id.get(row.row_id)
+            calculation = calculation_by_row_id.get(row.row_id)
+            correction = CORRECTIONS_BY_ROW.get(row.row_id)
+
+            raw_reasons = row.raw_data.get("_review_reasons", []) if isinstance(row.raw_data, dict) else []
             if row.review_status != "ok":
-                reason_text = ", ".join(reasons) if reasons else "Rivi vaatii tarkistuksen"
+                if isinstance(raw_reasons, list) and raw_reasons:
+                    for reason in raw_reasons:
+                        add_reason(str(reason))
+                else:
+                    add_reason("Rivi vaatii tarkistuksen")
+
+            manual_selection_exists = bool(correction and correction.selected_pool_id)
+
+            if match and match.status in {"ambiguous", "unmatched"} and not manual_selection_exists:
+                add_reason(match.reason)
+
+            if calculation and calculation.status == "incomplete":
+                add_reason("Riviä ei laskettu automaattisesti, koska vastaavuus ei ole varma tai hyväksytty")
+
+            if reasons:
+                effective_review_status = "review"
+
                 review_items.append(
                     ReviewItem(
                         row_id=row.row_id,
                         source_row_number=row.source_row_number,
                         pole_code=row.pole_code,
                         pole_type=row.pole_type,
-                        review_status=row.review_status,
-                        reason=reason_text,
+                        review_status=effective_review_status,
+                        match_status=match.status if match else None,
+                        calculation_status=calculation.status if calculation else None,
+                        suggested_pool_id=match.suggested_pool_id if match else None,
+                        selected_pool_id=correction.selected_pool_id if correction else None,
+                        reasons=reasons,
                     )
                 )
-
-        for match in matches:
-            if match.status in {"ambiguous", "unmatched"}:
-                related_row = next((r for r in poles if r.row_id == match.row_id), None)
-                if related_row:
-                    review_items.append(
-                        ReviewItem(
-                            row_id=related_row.row_id,
-                            source_row_number=related_row.source_row_number,
-                            pole_code=related_row.pole_code,
-                            pole_type=related_row.pole_type,
-                            review_status="review",
-                            reason=match.reason,
-                        )
-                    )
-
-        unique_review_items = []
-        seen = set()
-        for item in review_items:
-            key = (item.row_id, item.reason)
-            if key not in seen:
-                seen.add(key)
-                unique_review_items.append(item)
 
         return DocumentSummary(
             document_id=document_id,
@@ -114,5 +136,5 @@ class SummaryService:
             total_quantity=total_quantity,
             total_mass_kg=total_mass,
             rows_by_pool=rows_by_pool,
-            review_items=unique_review_items,
+            review_items=review_items,
         )
