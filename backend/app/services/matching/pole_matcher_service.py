@@ -16,6 +16,7 @@ class PoleMatcherService:
             return 0.0, False
 
         diff = abs(item.support_height_m - row.support_height_m)
+
         if diff == 0:
             return 30.0, True
         if diff <= 1:
@@ -24,24 +25,35 @@ class PoleMatcherService:
             return 18.0, True
         if diff <= 4:
             return 8.0, False
+
         return 0.0, False
 
     @staticmethod
-    def _span_score(row: DetectedPoleRow, item: PolePoolItem) -> tuple[float, bool]:
-        if row.span_m is None or item.max_span_m is None:
+    def _phase_spacing_score(row: DetectedPoleRow, item: PolePoolItem) -> tuple[float, bool]:
+        if row.span_m is None:
             return 0.0, False
 
-        if row.span_m <= item.max_span_m:
-            utilization = row.span_m / item.max_span_m if item.max_span_m > 0 else 0
-            if utilization >= 0.9:
-                return 15.0, True
-            if utilization >= 0.75:
-                return 12.0, True
-            return 8.0, True
+        candidate_values_m: list[float] = []
 
-        exceed_ratio = (row.span_m - item.max_span_m) / item.max_span_m if item.max_span_m > 0 else 1
-        if exceed_ratio <= 0.05:
-            return 2.0, False
+        if item.phase_spacing_left_mm is not None:
+            candidate_values_m.append(item.phase_spacing_left_mm / 1000.0)
+
+        if item.phase_spacing_right_mm is not None:
+            candidate_values_m.append(item.phase_spacing_right_mm / 1000.0)
+
+        if not candidate_values_m:
+            return 0.0, False
+
+        best_diff = min(abs(value - row.span_m) for value in candidate_values_m)
+
+        if best_diff == 0:
+            return 15.0, True
+        if best_diff <= 0.05:
+            return 13.0, True
+        if best_diff <= 0.10:
+            return 10.0, True
+        if best_diff <= 0.25:
+            return 6.0, False
 
         return 0.0, False
 
@@ -66,7 +78,7 @@ class PoleMatcherService:
     ) -> tuple[float, bool, bool, bool]:
         score = 0.0
         height_close = False
-        span_ok = False
+        phase_spacing_ok = False
         guying_ok = False
 
         row_type = PoleMatcherService._normalize(row.pole_type)
@@ -78,14 +90,14 @@ class PoleMatcherService:
             return 0.0, False, False, False
 
         height_points, height_close = PoleMatcherService._height_score(row, item)
-        span_points, span_ok = PoleMatcherService._span_score(row, item)
+        phase_spacing_points, phase_spacing_ok = PoleMatcherService._phase_spacing_score(row, item)
         guying_points, guying_ok = PoleMatcherService._guying_score(row, item)
 
         score += height_points
-        score += span_points
+        score += phase_spacing_points
         score += guying_points
 
-        return score, height_close, span_ok, guying_ok
+        return score, height_close, phase_spacing_ok, guying_ok
 
     @staticmethod
     def _build_alternatives(
@@ -109,6 +121,7 @@ class PoleMatcherService:
             ] if type_required else []
 
             scored_all: list[tuple[PolePoolItem, float]] = []
+
             for item in pool_items:
                 soft_score, _, _, _ = PoleMatcherService._score_candidate(
                     row=row,
@@ -135,12 +148,13 @@ class PoleMatcherService:
             best_item: PolePoolItem | None = None
             best_score = -1.0
             best_height_close = False
-            best_span_ok = False
+            best_phase_spacing_ok = False
             best_guying_ok = False
+
             scored_candidates: list[tuple[PolePoolItem, float]] = []
 
             for item in candidates:
-                score, height_close, span_ok, guying_ok = PoleMatcherService._score_candidate(
+                score, height_close, phase_spacing_ok, guying_ok = PoleMatcherService._score_candidate(
                     row=row,
                     item=item,
                     type_required=type_required,
@@ -151,7 +165,7 @@ class PoleMatcherService:
                     best_score = score
                     best_item = item
                     best_height_close = height_close
-                    best_span_ok = span_ok
+                    best_phase_spacing_ok = phase_spacing_ok
                     best_guying_ok = guying_ok
 
             alternatives = PoleMatcherService._build_alternatives(scored_candidates)
@@ -195,7 +209,7 @@ class PoleMatcherService:
                 continue
 
             has_required_fit = best_height_close and (
-                row.span_m is None or best_span_ok
+                row.span_m is None or best_phase_spacing_ok
             ) and (
                 row.guying is None or best_guying_ok
             )

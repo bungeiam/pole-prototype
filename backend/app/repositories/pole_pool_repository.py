@@ -1,5 +1,7 @@
 from pathlib import Path
+
 import pandas as pd
+
 from app.models.match import PolePoolItem
 
 
@@ -12,6 +14,7 @@ class PolePoolRepository:
             return []
 
         df = pd.read_csv(self.csv_path)
+
         items: list[PolePoolItem] = []
 
         for _, row in df.iterrows():
@@ -24,6 +27,16 @@ class PolePoolRepository:
                     guying=str(row["guying"]) if pd.notna(row.get("guying")) else None,
                     unit_mass_kg=float(row["unit_mass_kg"]),
                     material_code=str(row["material_code"]) if pd.notna(row.get("material_code")) else None,
+                    phase_spacing_left_mm=float(row["phase_spacing_left_mm"])
+                    if pd.notna(row.get("phase_spacing_left_mm"))
+                    else None,
+                    phase_spacing_right_mm=float(row["phase_spacing_right_mm"])
+                    if pd.notna(row.get("phase_spacing_right_mm"))
+                    else None,
+                    phase_spacing_text=str(row["phase_spacing_text"])
+                    if pd.notna(row.get("phase_spacing_text"))
+                    else None,
                 )
             )
+
         return items

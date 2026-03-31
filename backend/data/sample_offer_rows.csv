@@ -1,9 +1,5 @@
-pylväsnumero,pylvästyyppi,pylväskorkeus,vaiheväli,harukset,määrä,huomautus
-P1001,H1,18,110,yes,4,Perusrakenne
-P1002,H1,20,135,yes,2,Pidempi jänneväli
-P1003,H2,18,100,no,3,Ilman haruksia
-P1004,H2,22,150,yes,1,Vahvistettu rakenne
-P1005,PORTAL,24,170,yes,2,Portaaliratkaisu
-P1006,,18,120,yes,1,Tyyppi puuttuu
-P1007,H1,,115,yes,2,Korkeus puuttuu
-P1008,H3,20,140,no,1,Tyyppiä ei löydy poolista
+support number,support type,support height,phase spacing,guyed,qty
+P1001,1H,18,4500 mm,yes,1
+P1002,2H,20,5.2 m,kyllä,1
+P1003,2HK,24,6000,yes,1
+P1004,1H,18,7.0 m,yes,1

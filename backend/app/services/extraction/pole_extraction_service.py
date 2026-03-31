@@ -16,6 +16,7 @@ FIELD_ALIASES = {
         "numero",
         "tunnus",
         "code",
+        "id",
     ],
     "pole_type": [
         "pole_type",
@@ -23,6 +24,7 @@ FIELD_ALIASES = {
         "support type",
         "support_type",
         "type",
+        "family",
         "pylvästyyppi",
         "pylvastyyppi",
         "tyyppi",
@@ -45,8 +47,13 @@ FIELD_ALIASES = {
         "max span",
         "phase span",
         "phase_span",
+        "phase spacing",
+        "phase spacing mm",
+        "phase spacing m",
         "vaiheväli",
         "vaihevali",
+        "vaiheiden väli",
+        "vaiheiden vali",
         "jänneväli",
         "jannevali",
         "väli",
@@ -60,6 +67,7 @@ FIELD_ALIASES = {
         "harukset",
         "harustus",
         "harustettu",
+        "is_guyed",
     ],
     "quantity": [
         "quantity",
@@ -80,7 +88,6 @@ FIELD_ALIASES = {
         "ratkaisu",
     ],
 }
-
 
 GUYING_TRUE_VALUES = {
     "yes",
@@ -105,6 +112,18 @@ GUYING_FALSE_VALUES = {
     "unguyed",
     "ei haruksia",
     "harukseton",
+}
+
+PHASE_SPACING_ALIASES = {
+    "phase span",
+    "phase_span",
+    "phase spacing",
+    "phase spacing mm",
+    "phase spacing m",
+    "vaiheväli",
+    "vaihevali",
+    "vaiheiden väli",
+    "vaiheiden vali",
 }
 
 
@@ -184,6 +203,45 @@ def normalize_guying(value) -> tuple[str | None, list[str]]:
     return raw, []
 
 
+def parse_span_value(value, source_key: str | None) -> tuple[float | None, list[str]]:
+    parsed = parse_float(value)
+    if parsed is None:
+        return None, []
+
+    source_normalized = normalize_text(source_key) if source_key else ""
+    raw_text = str(value).strip()
+    text_normalized = normalize_text(raw_text)
+    reasons: list[str] = []
+
+    if source_normalized in PHASE_SPACING_ALIASES:
+        phase_spacing_m = parsed
+
+        if "mm" in text_normalized:
+            phase_spacing_m = parsed / 1000.0
+        elif " m" in f" {text_normalized}" or text_normalized.endswith("m"):
+            phase_spacing_m = parsed
+        elif parsed >= 100:
+            # Esim. 4500 tulkitaan 4500 mm -> 4.5 m
+            phase_spacing_m = parsed / 1000.0
+
+        normalized_text = (
+            str(int(phase_spacing_m))
+            if float(phase_spacing_m).is_integer()
+            else str(phase_spacing_m)
+        )
+
+        if raw_text != normalized_text:
+            reasons.append(f'Vaiheväli normalisoitiin muodosta "{value}"')
+
+        return float(phase_spacing_m), reasons
+
+    normalized_text = str(int(parsed)) if float(parsed).is_integer() else str(parsed)
+    if raw_text != normalized_text:
+        reasons.append(f'Jänne-/vaiheväli normalisoitiin muodosta "{value}"')
+
+    return parsed, reasons
+
+
 class PoleExtractionService:
     @staticmethod
     def _find_value(data: dict, target_field: str):
@@ -240,7 +298,7 @@ class PoleExtractionService:
             pole_code, pole_code_source, pole_code_alias = cls._find_value(data, "pole_code")
             pole_type_raw, pole_type_source, pole_type_alias = cls._find_value(data, "pole_type")
             support_height, support_height_source, support_height_alias = cls._find_value(data, "support_height_m")
-            span, span_source, span_alias = cls._find_value(data, "span_m")
+            span_raw, span_source, span_alias = cls._find_value(data, "span_m")
             guying_raw, guying_source, guying_alias = cls._find_value(data, "guying")
             quantity_raw, quantity_source, quantity_alias = cls._find_value(data, "quantity")
             structural_solution, _, _ = cls._find_value(data, "structural_solution")
@@ -261,16 +319,16 @@ class PoleExtractionService:
             support_height_m = parse_float(support_height)
             if support_height not in (None, "") and support_height_m is not None:
                 support_height_text = str(support_height).strip()
-                normalized_height_text = str(int(support_height_m)) if support_height_m.is_integer() else str(support_height_m)
+                normalized_height_text = (
+                    str(int(support_height_m))
+                    if support_height_m.is_integer()
+                    else str(support_height_m)
+                )
                 if support_height_text != normalized_height_text:
                     review_reasons.append(f'Korkeus normalisoitiin muodosta "{support_height}"')
 
-            span_m = parse_float(span)
-            if span not in (None, "") and span_m is not None:
-                span_text = str(span).strip()
-                normalized_span_text = str(int(span_m)) if span_m.is_integer() else str(span_m)
-                if span_text != normalized_span_text:
-                    review_reasons.append(f'Vaiheväli normalisoitiin muodosta "{span}"')
+            span_m, span_reasons = parse_span_value(span_raw, span_source)
+            review_reasons.extend(span_reasons)
 
             quantity_int = parse_int(quantity_raw, default=1)
             if quantity_raw in (None, ""):

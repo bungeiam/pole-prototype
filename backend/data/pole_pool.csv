@@ -1,6 +1,4 @@
-pool_id,pole_type,support_height_m,max_span_m,guying,unit_mass_kg,material_code
-P001,H1,18,120,yes,850,ELT-H1-18
-P002,H1,20,140,yes,980,ELT-H1-20
-P003,H2,18,110,no,780,ELT-H2-18
-P004,H2,22,160,yes,1120,ELT-H2-22
-P005,PORTAL,24,180,yes,1800,ELT-PORTAL-24
+pool_id,pole_type,support_height_m,max_span_m,guying,unit_mass_kg,material_code,phase_spacing_left_mm,phase_spacing_right_mm,phase_spacing_text
+P001,1H,18,220,guyed,1000,ML001,4500,4500,4500/4500
+P002,2H,20,250,guyed,1200,ML002,5200,5200,5200/5200
+P003,2HK,24,300,guyed,1400,ML003,6000,6000,6000/6000

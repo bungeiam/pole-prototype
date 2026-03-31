@@ -1,6 +1,6 @@
 from typing import Literal
-from pydantic import BaseModel, Field
 
+from pydantic import BaseModel, Field
 
 MatchStatus = Literal["matched", "ambiguous", "unmatched"]
 
@@ -13,6 +13,10 @@ class PolePoolItem(BaseModel):
     guying: str | None = None
     unit_mass_kg: float
     material_code: str | None = None
+
+    phase_spacing_left_mm: float | None = None
+    phase_spacing_right_mm: float | None = None
+    phase_spacing_text: str | None = None
 
 
 class PoleMatch(BaseModel):
