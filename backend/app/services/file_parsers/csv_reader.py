@@ -6,10 +6,17 @@ class CsvReaderService:
     @staticmethod
     def read(path: str) -> list[dict]:
         file_path = Path(path)
+
         if not file_path.exists():
             raise FileNotFoundError(f"Tiedostoa ei löytynyt: {path}")
 
-        df = pd.read_csv(file_path).fillna("")
+        df = pd.read_csv(
+            file_path,
+            sep=None,
+            engine="python",
+            encoding="utf-8-sig",
+        ).fillna("")
+
         rows: list[dict] = []
 
         for index, row in df.iterrows():
@@ -20,4 +27,5 @@ class CsvReaderService:
                     "data": row.to_dict(),
                 }
             )
+
         return rows
