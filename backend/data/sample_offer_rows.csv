@@ -1,5 +1,17 @@
 support number,support type,support height,phase spacing,guyed,qty
-P1001,1H,18,4500 mm,yes,1
-P1002,2H,20,5.2 m,kyllä,1
-P1003,2HK,24,6000,yes,1
-P1004,1H,18,7.0 m,yes,1
+P1001,1H,18,4500,kyllä,2
+P1002,1H,18,"4500 mm",kyllä,1
+P1003,1H,18,"4.5 m",kyllä,1
+P1004,9H,18,4500,kyllä,1
+P1005,,18,4500,kyllä,1
+P1006,2H,20,6000,kyllä,3
+P1007,2H,20,"6.0 m",kyllä,1
+P1008,2H,20,6200,kyllä,1
+P1009,2H,20,7000,kyllä,1
+P1010,1H,,4500,kyllä,1
+P1011,1H,18,,kyllä,1
+P1012,2HK,22,8000,kyllä,2
+P1013,3H,24,9000,kyllä,1
+P1014,1H-18,18,4500,kyllä,1
+P1015,1H,18,"4,5 m",kyllä,1
+P1016,1H,18,"4.5 m",ei,1
