@@ -4,28 +4,37 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eltel Pole Prototype</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="container">
-    <h1>Eltel Pole Prototype</h1>
+    <div class="card">
+      <h1>Eltel Pole Prototype</h1>
+      <p class="summary-subtle">
+        Prototyyppi tarjousaineiston pylvästietojen tunnistukseen, vastaavuuksien arviointiin ja massalaskentaan.
+      </p>
+    </div>
 
-    <section class="card">
+    <div class="card">
       <h2>1. Lataa tarjousaineisto</h2>
       <input type="file" id="fileInput" />
-      <button id="uploadBtn">Lataa</button>
-      <p id="uploadResult"></p>
-    </section>
+      <div class="button-row">
+        <button id="uploadBtn">Lataa</button>
+      </div>
+      <div id="uploadResult" class="small-text"></div>
+    </div>
 
-    <section class="card">
+    <div class="card">
       <h2>2. Dokumentit</h2>
-      <button id="refreshDocsBtn">Päivitä lista</button>
+      <div class="button-row">
+        <button id="refreshDocsBtn">Päivitä lista</button>
+      </div>
       <ul id="documentsList"></ul>
-    </section>
+    </div>
 
-    <section class="card">
+    <div class="card">
       <h2>3. Valittu dokumentti</h2>
-      <input type="text" id="documentIdInput" placeholder="Syötä document_id" />
+      <input type="text" id="documentIdInput" placeholder="Dokumentin ID" />
       <div class="button-row">
         <button id="analyzeBtn">Analysoi</button>
         <button id="loadPolesBtn">Lataa pylväsrivit</button>
@@ -33,52 +42,90 @@
         <button id="calculateBtn">Laske massat</button>
         <button id="summaryBtn">Hae yhteenveto</button>
       </div>
-    </section>
+    </div>
 
-    <section class="card">
+    <div class="card">
       <h2>4. Tunnistetut pylväsrivit</h2>
-      <table id="polesTable">
-        <thead>
-          <tr>
-            <th>Valitse</th>
-            <th>Rivi</th>
-            <th>Pylväsnumero</th>
-            <th>Tyyppi</th>
-            <th>Korkeus</th>
-            <th>Vaiheväli</th>
-            <th>Harukset</th>
-            <th>Määrä</th>
-            <th>Status</th>
-            <th>Confidence</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </section>
-
-    <section class="card">
-      <h2>5. Korjaa valittu rivi</h2>
-      <p id="selectedRowInfo">Ei valittua riviä.</p>
-      <div class="form-grid">
-        <input type="text" id="editPoleCode" placeholder="Pylväsnumero" />
-        <input type="text" id="editPoleType" placeholder="Pylvästyyppi" />
-        <input type="number" step="0.1" id="editSupportHeight" placeholder="Pylväskorkeus" />
-        <input type="number" step="0.1" id="editSpan" placeholder="Vaiheväli" />
-        <input type="text" id="editGuying" placeholder="Harukset" />
-        <input type="number" id="editQuantity" placeholder="Määrä" />
-        <input type="text" id="editSelectedPoolId" placeholder="Valittu pool_id (valinnainen)" />
-        <input type="text" id="editNote" placeholder="Huomio" />
+      <div class="summary-subtle">
+        Taulukossa näkyvät tunnistetut tiedot sekä niiden tämänhetkinen match-, laskenta- ja korjaustila.
       </div>
-      <button id="saveCorrectionBtn">Tallenna korjaus</button>
-      <p id="correctionResult"></p>
-    </section>
+      <div class="summary-table-wrap">
+        <table id="polesTable">
+          <thead>
+            <tr>
+              <th>Valitse</th>
+              <th>Rivi</th>
+              <th>Pylväsnumero</th>
+              <th>Tyyppi</th>
+              <th>Korkeus</th>
+              <th>Vaiheväli</th>
+              <th>Harukset</th>
+              <th>Määrä</th>
+              <th>Review</th>
+              <th>Confidence</th>
+              <th>Match</th>
+              <th>Ehdotettu pooli</th>
+              <th>Valittu pooli</th>
+              <th>Laskenta</th>
+              <th>Kokonaismassa (kg)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
 
-    <section class="card">
+    <div class="card">
+      <h2>5. Korjaa valittu rivi</h2>
+      <div id="selectedRowInfo">Ei valittua riviä.</div>
+
+      <div class="form-grid" style="margin-top: 12px;">
+        <div>
+          <label for="editPoleCode">Pylväsnumero</label>
+          <input id="editPoleCode" type="text" />
+        </div>
+        <div>
+          <label for="editPoleType">Tyyppi</label>
+          <input id="editPoleType" type="text" />
+        </div>
+        <div>
+          <label for="editSupportHeight">Korkeus</label>
+          <input id="editSupportHeight" type="number" step="0.1" />
+        </div>
+        <div>
+          <label for="editSpan">Vaiheväli</label>
+          <input id="editSpan" type="number" step="0.1" />
+        </div>
+        <div>
+          <label for="editGuying">Harukset</label>
+          <input id="editGuying" type="text" />
+        </div>
+        <div>
+          <label for="editQuantity">Määrä</label>
+          <input id="editQuantity" type="number" step="1" />
+        </div>
+        <div>
+          <label for="editSelectedPoolId">Hyväksytty pooli</label>
+          <input id="editSelectedPoolId" type="text" placeholder="esim. P001" />
+        </div>
+        <div>
+          <label for="editNote">Muistiinpano</label>
+          <textarea id="editNote"></textarea>
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button id="saveCorrectionBtn">Tallenna korjaus</button>
+      </div>
+      <div id="correctionResult" class="small-text"></div>
+    </div>
+
+    <div class="card">
       <h2>6. Tulokset</h2>
-      <pre id="output"></pre>
-    </section>
+      <div id="output"></div>
+    </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

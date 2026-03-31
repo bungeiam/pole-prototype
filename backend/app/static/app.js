@@ -82,12 +82,17 @@ function renderMessage(message) {
   output.innerHTML = `<div><strong>${escapeHtml(message)}</strong></div>`;
 }
 
+function buildSelectedRowLabel(row) {
+  return `Valittu rivi: ${row.row_id} (lähderivi ${row.source_row_number ?? "-"})`;
+}
+
 function renderPolesTable(rows) {
   polesTableBody.innerHTML = "";
   currentPoles = rows;
 
   rows.forEach((row) => {
     const tr = document.createElement("tr");
+
     tr.innerHTML = `
       <td><button class="select-row-btn" data-row-id="${row.row_id}">Valitse</button></td>
       <td>${formatValue(row.source_row_number)}</td>
@@ -97,9 +102,15 @@ function renderPolesTable(rows) {
       <td>${formatValue(row.span_m)}</td>
       <td>${formatValue(row.guying)}</td>
       <td>${formatValue(row.quantity)}</td>
-      <td>${formatValue(row.review_status)}</td>
+      <td>${getStatusBadge(row.review_status)}</td>
       <td>${formatValue(row.confidence)}</td>
+      <td>${getStatusBadge(row.match_status)}</td>
+      <td>${formatValue(row.suggested_pool_id)}</td>
+      <td>${formatValue(row.correction_selected_pool_id)}</td>
+      <td>${getStatusBadge(row.calculation_status)}</td>
+      <td>${formatValue(row.total_mass_kg)}</td>
     `;
+
     polesTableBody.appendChild(tr);
   });
 
@@ -110,7 +121,7 @@ function renderPolesTable(rows) {
       if (!row) return;
 
       selectedRowId = row.row_id;
-      selectedRowInfo.textContent = `Valittu rivi: ${row.row_id} (lähderivi ${row.source_row_number ?? "-"})`;
+      selectedRowInfo.textContent = buildSelectedRowLabel(row);
 
       editPoleCode.value = row.pole_code ?? "";
       editPoleType.value = row.pole_type ?? "";
@@ -118,8 +129,8 @@ function renderPolesTable(rows) {
       editSpan.value = row.span_m ?? "";
       editGuying.value = row.guying ?? "";
       editQuantity.value = row.quantity ?? "";
-      editSelectedPoolId.value = "";
-      editNote.value = "";
+      editSelectedPoolId.value = row.correction_selected_pool_id ?? "";
+      editNote.value = row.correction_note ?? "";
     });
   });
 }
@@ -298,6 +309,34 @@ function renderSummary(summary) {
   `;
 }
 
+async function loadPolesForDocument(documentId) {
+  const rows = await api(`/api/documents/${documentId}/poles`);
+  renderPolesTable(rows);
+  return rows;
+}
+
+async function refreshDocumentOutputs(documentId) {
+  await api(`/api/documents/${documentId}/match`, { method: "POST" });
+  await api(`/api/documents/${documentId}/calculate`, { method: "POST" });
+
+  const [rows, summary] = await Promise.all([
+    api(`/api/documents/${documentId}/poles`),
+    api(`/api/documents/${documentId}/summary`),
+  ]);
+
+  renderPolesTable(rows);
+  renderSummary(summary);
+
+  if (selectedRowId) {
+    const selectedRow = rows.find((row) => row.row_id === selectedRowId);
+    if (selectedRow) {
+      selectedRowInfo.textContent = buildSelectedRowLabel(selectedRow);
+      editSelectedPoolId.value = selectedRow.correction_selected_pool_id ?? "";
+      editNote.value = selectedRow.correction_note ?? "";
+    }
+  }
+}
+
 uploadBtn.addEventListener("click", async () => {
   const file = fileInput.files[0];
   if (!file) {
@@ -356,9 +395,7 @@ analyzeBtn.addEventListener("click", async () => {
 loadPolesBtn.addEventListener("click", async () => {
   try {
     const id = documentIdInput.value.trim();
-    const result = await api(`/api/documents/${id}/poles`);
-    renderPolesTable(result);
-    setOutputJson(result);
+    await loadPolesForDocument(id);
   } catch (error) {
     renderMessage(error.message);
   }
@@ -369,6 +406,7 @@ matchBtn.addEventListener("click", async () => {
     const id = documentIdInput.value.trim();
     const result = await api(`/api/documents/${id}/match`, { method: "POST" });
     setOutputJson(result);
+    await loadPolesForDocument(id);
   } catch (error) {
     renderMessage(error.message);
   }
@@ -379,6 +417,7 @@ calculateBtn.addEventListener("click", async () => {
     const id = documentIdInput.value.trim();
     const result = await api(`/api/documents/${id}/calculate`, { method: "POST" });
     setOutputJson(result);
+    await loadPolesForDocument(id);
   } catch (error) {
     renderMessage(error.message);
   }
@@ -410,6 +449,8 @@ saveCorrectionBtn.addEventListener("click", async () => {
   };
 
   try {
+    correctionResult.textContent = "Tallennetaan korjaus ja päivitetään tulokset...";
+
     const result = await api(`/api/poles/${selectedRowId}/corrections`, {
       method: "POST",
       headers: {
@@ -422,11 +463,10 @@ saveCorrectionBtn.addEventListener("click", async () => {
       }),
     });
 
-    correctionResult.textContent = `Korjaus tallennettu: ${result.correction_id}`;
-
     const docId = documentIdInput.value.trim();
-    const updatedRows = await api(`/api/documents/${docId}/poles`);
-    renderPolesTable(updatedRows);
+    await refreshDocumentOutputs(docId);
+
+    correctionResult.textContent = `Korjaus tallennettu ja tulokset päivitetty: ${result.correction_id}`;
   } catch (error) {
     correctionResult.textContent = error.message;
   }
