@@ -53,7 +53,6 @@ class AiAssistService:
 
         for row in rows:
             match = match_by_row_id.get(row.row_id)
-
             input_rows.append(
                 {
                     "row_id": row.row_id,
@@ -66,17 +65,15 @@ class AiAssistService:
                     "row_confidence": row.confidence,
                     "review_status": row.review_status,
                     "raw_data": row.raw_data,
-                    "match": (
-                        {
-                            "status": match.status,
-                            "score": match.score,
-                            "reason": match.reason,
-                            "suggested_pool_id": match.suggested_pool_id,
-                            "alternatives": match.alternatives,
-                        }
-                        if match
-                        else None
-                    ),
+                    "match": {
+                        "status": match.status,
+                        "score": match.score,
+                        "reason": match.reason,
+                        "suggested_pool_id": match.suggested_pool_id,
+                        "alternatives": match.alternatives,
+                    }
+                    if match
+                    else None,
                 }
             )
 
@@ -93,32 +90,17 @@ Important rules:
 - Do NOT select the final pole.
 - Do NOT approve any match.
 - Do NOT override the matcher.
-- Do NOT invent missing values.
-- Reasons must be written in Finnish.
-- Phase spacing is an important matching factor.
-- Guying is a critical matching factor.
-- If input guying is "guyed", the row has guying information.
-- If input guying is "unguyed", the row has guying information.
-- Only guying: null means that guying information is missing.
-- Never say that guying information is missing if guying is "guyed" or "unguyed".
+- Do NOT ignore guying requirements.
 - If guying information is missing, manual review is required.
+- Phase spacing is an important matching factor.
 - If critical information is missing, mark requires_manual_review as true.
-- requires_manual_review can be true even when confidence is greater than 0.0.
-- Matcher status "unmatched" does not automatically mean confidence 0.0.
-- If the extracted row data is clear but the matcher did not find a pool match, explain the mismatch and give a reasonable confidence based on extracted data quality.
-- Confidence must describe how usable and clear the detected row data is, not whether the matcher approved the row.
-
-Confidence scale:
-- 0.80-1.00 = detected row data is clear, even if matcher disagrees or cannot find a pool match
-- 0.50-0.79 = some data is clear, but one important item needs review
-- 0.20-0.49 = multiple uncertainties exist, but some usable technical data is available
-- 0.00-0.19 = row is almost unusable or critical data is missing
+- Explain what is uncertain and what needs manual verification.
 
 Analyze these detected pole rows and matcher results.
 
 Return ONLY valid JSON in this exact structure:
 {{
-  "summary": "short summary in Finnish",
+  "summary": "short summary",
   "items": [
     {{
       "row_id": "same row_id as input",
@@ -150,10 +132,7 @@ Input:
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are a careful AI assistant for technical tender data review. "
-                        "Return only valid JSON."
-                    ),
+                    "content": "You are a careful AI assistant for technical tender data review.",
                 },
                 {
                     "role": "user",
@@ -181,12 +160,9 @@ Input:
         except urllib.error.HTTPError as exc:
             details = exc.read().decode("utf-8", errors="ignore")
             raise RuntimeError(f"Azure OpenAI HTTP {exc.code}: {details}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Azure OpenAI connection error: {exc.reason}") from exc
 
         data = json.loads(raw)
         content = data["choices"][0]["message"]["content"]
-
         return json.loads(content)
 
     @staticmethod
@@ -195,7 +171,8 @@ Input:
         rows: list[DetectedPoleRow],
         payload: dict,
     ) -> AiAssistResult:
-        valid_row_ids = {row.row_id for row in rows}
+        row_by_id = {row.row_id: row for row in rows}
+        valid_row_ids = set(row_by_id.keys())
         items: list[AiAssistItem] = []
 
         for item in payload.get("items", []):
@@ -204,15 +181,20 @@ Input:
             if row_id not in valid_row_ids:
                 continue
 
+            row = row_by_id[row_id]
+            ai_confidence = float(item.get("confidence") or 0.0)
+            confidence = AiAssistService._apply_minimum_confidence_fallback(
+                row=row,
+                ai_confidence=ai_confidence,
+            )
+
             items.append(
                 AiAssistItem(
                     row_id=row_id,
                     suggested_pole_type=item.get("suggested_pole_type"),
                     suggested_guying=item.get("suggested_guying"),
                     suggested_phase_spacing_m=item.get("suggested_phase_spacing_m"),
-                    confidence=AiAssistService._clamp_confidence(
-                        item.get("confidence")
-                    ),
+                    confidence=confidence,
                     requires_manual_review=bool(
                         item.get("requires_manual_review", True)
                     ),
@@ -238,13 +220,45 @@ Input:
         )
 
     @staticmethod
-    def _clamp_confidence(value) -> float:
-        try:
-            confidence = float(value)
-        except (TypeError, ValueError):
-            return 0.0
+    def _apply_minimum_confidence_fallback(
+        row: DetectedPoleRow,
+        ai_confidence: float,
+    ) -> float:
+        if ai_confidence > 0.0:
+            return ai_confidence
 
-        return max(0.0, min(confidence, 1.0))
+        confidence = 0.0
+
+        if row.pole_type:
+            confidence += 0.25
+
+        if row.support_height_m is not None:
+            confidence += 0.20
+
+        if row.span_m is not None:
+            confidence += 0.20
+
+        if row.guying is not None:
+            confidence += 0.20
+
+        if row.quantity is not None:
+            confidence += 0.10
+
+        if row.review_status == "ok":
+            confidence += 0.10
+
+        confidence = min(confidence, 0.85)
+
+        if not row.pole_type:
+            confidence = min(confidence, 0.45)
+
+        if row.guying is None:
+            confidence = min(confidence, 0.65)
+
+        if row.span_m is None:
+            confidence = min(confidence, 0.65)
+
+        return confidence
 
     @staticmethod
     def _fallback_result(
@@ -282,7 +296,10 @@ Input:
             suggested_pole_type=row.pole_type,
             suggested_guying=row.guying,
             suggested_phase_spacing_m=row.span_m,
-            confidence=min(row.confidence, 0.5),
+            confidence=AiAssistService._apply_minimum_confidence_fallback(
+                row=row,
+                ai_confidence=min(row.confidence, 0.5),
+            ),
             requires_manual_review=True,
             reasons=reasons,
         )
