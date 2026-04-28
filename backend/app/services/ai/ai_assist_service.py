@@ -90,11 +90,13 @@ Important rules:
 - Do NOT select the final pole.
 - Do NOT approve any match.
 - Do NOT override the matcher.
-- Do NOT ignore guying requirements.
-- If guying information is missing, manual review is required.
+- Do NOT invent missing values.
+- All user-facing text must be Finnish.
+- Summary must be Finnish.
+- Every reason in reasons must be Finnish.
+- Do not write English explanations in summary or reasons.
 - Phase spacing is an important matching factor.
-- If critical information is missing, mark requires_manual_review as true.
-- Explain what is uncertain and what needs manual verification.
+- Guying is a critical matching factor.
 
 Analyze these detected pole rows and matcher results.
 
@@ -132,7 +134,12 @@ Input:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a careful AI assistant for technical tender data review.",
+                    "content": (
+                        "You are a careful AI assistant for technical tender data review. "
+                        "Return only valid JSON. "
+                        "All user-facing text in the JSON must be Finnish. "
+                        "The summary and every item in reasons must be written in Finnish."
+                    ),
                 },
                 {
                     "role": "user",
