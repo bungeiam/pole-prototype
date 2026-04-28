@@ -1,22 +1,25 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from app.models.document import OfferDocument
-from app.models.pole import DetectedPoleRow, PoleRowView
-from app.models.match import PoleMatch
+from app.models.ai_assist import AiAssistResult
 from app.models.calculation import MassCalculationResult
+from app.models.document import OfferDocument
+from app.models.match import PoleMatch
+from app.models.pole import DetectedPoleRow, PoleRowView
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.in_memory_store import (
-    POLES_BY_DOCUMENT,
-    MATCHES_BY_DOCUMENT,
+    AI_ASSISTS_BY_DOCUMENT,
     CALCULATIONS_BY_DOCUMENT,
     CORRECTIONS_BY_ROW,
+    MATCHES_BY_DOCUMENT,
+    POLES_BY_DOCUMENT,
 )
 from app.repositories.pole_pool_repository import PolePoolRepository
-from app.services.document_service import DocumentService
+from app.services.ai.ai_assist_service import AiAssistService
 from app.services.analysis_service import AnalysisService
+from app.services.calculations.mass_calculation_service import MassCalculationService
+from app.services.document_service import DocumentService
 from app.services.extraction.pole_extraction_service import PoleExtractionService
 from app.services.matching.pole_matcher_service import PoleMatcherService
-from app.services.calculations.mass_calculation_service import MassCalculationService
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -48,7 +51,9 @@ def _build_pole_row_views(document_id: str) -> list[PoleRowView]:
                 calculation_pool_id=calculation.pool_id if calculation else None,
                 unit_mass_kg=calculation.unit_mass_kg if calculation else None,
                 total_mass_kg=calculation.total_mass_kg if calculation else None,
-                correction_selected_pool_id=correction.selected_pool_id if correction else None,
+                correction_selected_pool_id=correction.selected_pool_id
+                if correction
+                else None,
                 correction_note=correction.note if correction else None,
                 has_manual_correction=bool(correction),
             )
@@ -70,21 +75,29 @@ async def list_documents():
 @router.get("/{document_id}", response_model=OfferDocument)
 async def get_document(document_id: str):
     document = DocumentRepository.get(document_id)
+
     if not document:
         raise HTTPException(status_code=404, detail="Dokumenttia ei löytynyt")
+
     return document
 
 
 @router.post("/{document_id}/analyze", response_model=list[DetectedPoleRow])
 async def analyze_document(document_id: str):
     document = DocumentRepository.get(document_id)
+
     if not document:
         raise HTTPException(status_code=404, detail="Dokumenttia ei löytynyt")
 
     raw_rows = AnalysisService.extract_raw_rows(document.stored_path)
-    poles = PoleExtractionService.extract(document_id=document_id, raw_rows=raw_rows)
+
+    poles = PoleExtractionService.extract(
+        document_id=document_id,
+        raw_rows=raw_rows,
+    )
 
     POLES_BY_DOCUMENT[document_id] = poles
+
     document.status = "analyzed"
     DocumentRepository.save(document)
 
@@ -94,6 +107,7 @@ async def analyze_document(document_id: str):
 @router.get("/{document_id}/poles", response_model=list[PoleRowView])
 async def get_poles(document_id: str):
     document = DocumentRepository.get(document_id)
+
     if not document:
         raise HTTPException(status_code=404, detail="Dokumenttia ei löytynyt")
 
@@ -103,17 +117,24 @@ async def get_poles(document_id: str):
 @router.post("/{document_id}/match", response_model=list[PoleMatch])
 async def match_document(document_id: str):
     document = DocumentRepository.get(document_id)
+
     if not document:
         raise HTTPException(status_code=404, detail="Dokumenttia ei löytynyt")
 
     poles = POLES_BY_DOCUMENT.get(document_id, [])
+
     if not poles:
-        raise HTTPException(status_code=400, detail="Analysoituja pylväsrivejä ei löydy")
+        raise HTTPException(
+            status_code=400,
+            detail="Analysoituja pylväsrivejä ei löydy",
+        )
 
     pool_items = PolePoolRepository().load_all()
+
     matches = PoleMatcherService.match_rows(poles, pool_items)
 
     MATCHES_BY_DOCUMENT[document_id] = matches
+
     document.status = "matched"
     DocumentRepository.save(document)
 
@@ -128,18 +149,29 @@ async def get_matches(document_id: str):
 @router.post("/{document_id}/calculate", response_model=list[MassCalculationResult])
 async def calculate_document(document_id: str):
     document = DocumentRepository.get(document_id)
+
     if not document:
         raise HTTPException(status_code=404, detail="Dokumenttia ei löytynyt")
 
     poles = POLES_BY_DOCUMENT.get(document_id, [])
     matches = MATCHES_BY_DOCUMENT.get(document_id, [])
+
     if not poles or not matches:
-        raise HTTPException(status_code=400, detail="Matchaus pitää tehdä ennen laskentaa")
+        raise HTTPException(
+            status_code=400,
+            detail="Matchaus pitää tehdä ennen laskentaa",
+        )
 
     pool_items = PolePoolRepository().load_all()
-    calculations = MassCalculationService.calculate(poles, matches, pool_items)
+
+    calculations = MassCalculationService.calculate(
+        poles,
+        matches,
+        pool_items,
+    )
 
     CALCULATIONS_BY_DOCUMENT[document_id] = calculations
+
     document.status = "calculated"
     DocumentRepository.save(document)
 
@@ -149,3 +181,49 @@ async def calculate_document(document_id: str):
 @router.get("/{document_id}/calculations", response_model=list[MassCalculationResult])
 async def get_calculations(document_id: str):
     return CALCULATIONS_BY_DOCUMENT.get(document_id, [])
+
+
+@router.post("/{document_id}/ai-assist", response_model=AiAssistResult)
+async def generate_ai_assist(document_id: str):
+    document = DocumentRepository.get(document_id)
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Dokumenttia ei löytynyt")
+
+    poles = POLES_BY_DOCUMENT.get(document_id, [])
+
+    if not poles:
+        raise HTTPException(
+            status_code=400,
+            detail="Analysoituja pylväsrivejä ei löydy",
+        )
+
+    matches = MATCHES_BY_DOCUMENT.get(document_id, [])
+
+    result = AiAssistService.analyze(
+        document_id=document_id,
+        rows=poles,
+        matches=matches,
+    )
+
+    AI_ASSISTS_BY_DOCUMENT[document_id] = result
+
+    return result
+
+
+@router.get("/{document_id}/ai-assist", response_model=AiAssistResult)
+async def get_ai_assist(document_id: str):
+    document = DocumentRepository.get(document_id)
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Dokumenttia ei löytynyt")
+
+    result = AI_ASSISTS_BY_DOCUMENT.get(document_id)
+
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail="AI-analyysiä ei löydy dokumentille",
+        )
+
+    return result
