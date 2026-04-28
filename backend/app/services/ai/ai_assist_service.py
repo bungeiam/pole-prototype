@@ -78,40 +78,89 @@ class AiAssistService:
             )
 
         return f"""
-You are an AI assistant supporting power line tender calculation.
+Olet voimajohtoprojektien tarjouslaskennan AI-avustaja ja pylvästietojen tarkastaja.
 
-Your role:
-- Help the human expert understand uncertain pole rows.
-- Explain missing or unclear information.
-- Suggest possible interpretations only when the source data supports them.
-- Always keep the human expert responsible for final decisions.
+Tärkein tehtäväsi:
+- auta asiantuntijaa ymmärtämään, miksi pylväsrivi on varma, epävarma tai riskialtis
+- selitä puuttuvat, ristiriitaiset ja poikkeavat tiedot
+- älä tee lopullista päätöstä
+- älä hyväksy matchia käyttäjän puolesta
+- älä keksi puuttuvia arvoja
 
-Important rules:
-- Do NOT select the final pole.
-- Do NOT approve any match.
-- Do NOT override the matcher.
-- Do NOT invent missing values.
-- All user-facing text must be Finnish.
-- Summary must be Finnish.
-- Every reason in reasons must be Finnish.
-- Do not write English explanations in summary or reasons.
-- Phase spacing is an important matching factor.
-- Guying is a critical matching factor.
+KAIKKI käyttäjälle näkyvä teksti pitää olla suomeksi:
+- summary suomeksi
+- reasons-listan kaikki syyt suomeksi
+- ei englanninkielisiä selityksiä
 
-Analyze these detected pole rows and matcher results.
+DOMAIN-SÄÄNNÖT:
 
-Return ONLY valid JSON in this exact structure:
+1. Pylvästyyppi on keskeinen matching-tekijä.
+2. Vaiheväli on keskeinen matching-tekijä.
+3. Harustus on kriittinen matching-tekijä.
+4. Jos harustieto on annettu, sen on täsmättävä.
+5. Jos harustieto puuttuu, rivi vaatii manuaalisen tarkistuksen.
+6. Jos vaiheväli puuttuu, rivi vaatii manuaalisen tarkistuksen.
+7. Jos pylvästyyppi puuttuu, rivi vaatii manuaalisen tarkistuksen.
+8. Jos matcher-status on ambiguous, selitä AINA mikä tekee vastaavuudesta osittaisen.
+9. Jos matcher-status on unmatched, selitä AINA miksi riviä ei voitu yhdistää.
+10. Älä käytä pelkkää ilmaisua "Osittainen vastaavuus" ilman tarkempaa selitystä.
+
+REASONS-LISTAN PITÄÄ KERTOA SELKEÄSTI:
+
+- mitä tietoja riviltä löytyi
+- mitä kriittisiä tietoja puuttuu
+- mitä matcher ehdottaa
+- mikä täsmää ehdotettuun pooliin, jos tämä voidaan päätellä
+- mikä ei täsmää tai on epävarmaa
+- miksi rivi vaatii tai ei vaadi manuaalista tarkistusta
+
+Jos käytössä ei ole varsinaista poolin teknistä dataa, älä väitä varmasti että kenttä täsmää pooliin.
+Voit kuitenkin sanoa esimerkiksi:
+- "Matcher ehdottaa poolia P002, mutta vastaavuus on merkitty osittaiseksi."
+- "Tarkka poikkeava kenttä ei selviä inputista, joten asiantuntijan tulee tarkistaa ehdotus."
+
+CONFIDENCE-SÄÄNNÖT:
+
+- 0.90–1.00: kaikki kriittiset tiedot ovat mukana ja matcher pitää vastaavuutta varmana
+- 0.70–0.85: tiedot ovat pääosin kunnossa, mutta mukana on lievä epävarmuus
+- 0.50–0.70: osittainen vastaavuus tai kriittinen tieto puuttuu
+- alle 0.50: kriittinen puute tai selvä ristiriita
+
+ENIMMÄISCONFIDENCE:
+
+- jos pole_type puuttuu → confidence saa olla enintään 0.45
+- jos phase_spacing_m puuttuu → confidence saa olla enintään 0.65
+- jos guying puuttuu → confidence saa olla enintään 0.65
+- jos match.status on unmatched → confidence saa olla enintään 0.50
+- jos match.status on ambiguous → confidence saa olla enintään 0.75
+- jos harustuksessa on ristiriita → confidence saa olla enintään 0.45
+
+requires_manual_review:
+
+- true, jos match.status on ambiguous
+- true, jos match.status on unmatched
+- true, jos pole_type puuttuu
+- true, jos phase_spacing_m puuttuu
+- true, jos guying puuttuu
+- true, jos review_status ei ole ok
+- false vain jos rivi on selkeä, kriittiset tiedot ovat mukana ja matcher-status on matched
+
+Palauta AINOASTAAN validia JSONia tässä muodossa:
+
 {{
-  "summary": "short summary",
+  "summary": "lyhyt suomenkielinen yhteenveto",
   "items": [
     {{
-      "row_id": "same row_id as input",
+      "row_id": "sama row_id kuin inputissa",
       "suggested_pole_type": null,
       "suggested_guying": null,
       "suggested_phase_spacing_m": null,
       "confidence": 0.0,
       "requires_manual_review": true,
-      "reasons": ["reason 1", "reason 2"]
+      "reasons": [
+        "suomenkielinen syy 1",
+        "suomenkielinen syy 2"
+      ]
     }}
   ]
 }}
@@ -135,10 +184,10 @@ Input:
                 {
                     "role": "system",
                     "content": (
-                        "You are a careful AI assistant for technical tender data review. "
-                        "Return only valid JSON. "
-                        "All user-facing text in the JSON must be Finnish. "
-                        "The summary and every item in reasons must be written in Finnish."
+                        "Olet tarkka teknisen tarjousaineiston AI-avustaja. "
+                        "Palauta vain validia JSONia. "
+                        "Kaikki käyttäjälle näkyvä teksti JSONissa pitää kirjoittaa suomeksi. "
+                        "Älä tee lopullisia päätöksiä, älä hyväksy matcheja ja älä keksi puuttuvia arvoja."
                     ),
                 },
                 {
@@ -147,7 +196,7 @@ Input:
                 },
             ],
             "temperature": 0.1,
-            "max_tokens": 2000,
+            "max_tokens": 4000,
             "response_format": {"type": "json_object"},
         }
 
@@ -190,10 +239,18 @@ Input:
 
             row = row_by_id[row_id]
             ai_confidence = float(item.get("confidence") or 0.0)
-            confidence = AiAssistService._apply_minimum_confidence_fallback(
+            confidence = AiAssistService._apply_confidence_rules(
                 row=row,
                 ai_confidence=ai_confidence,
             )
+
+            reasons = list(item.get("reasons") or [])
+            reasons = AiAssistService._ensure_domain_reasons(row=row, reasons=reasons)
+
+            requires_manual_review = bool(item.get("requires_manual_review", True))
+
+            if AiAssistService._row_requires_manual_review(row):
+                requires_manual_review = True
 
             items.append(
                 AiAssistItem(
@@ -202,10 +259,8 @@ Input:
                     suggested_guying=item.get("suggested_guying"),
                     suggested_phase_spacing_m=item.get("suggested_phase_spacing_m"),
                     confidence=confidence,
-                    requires_manual_review=bool(
-                        item.get("requires_manual_review", True)
-                    ),
-                    reasons=list(item.get("reasons") or []),
+                    requires_manual_review=requires_manual_review,
+                    reasons=reasons,
                 )
             )
 
@@ -216,24 +271,41 @@ Input:
                 items.append(
                     AiAssistService._fallback_item(
                         row=row,
-                        extra_reason="AI did not return analysis for this row",
+                        extra_reason="AI ei palauttanut analyysiä tälle riville",
                     )
                 )
 
         return AiAssistResult(
             document_id=document_id,
             items=items,
-            summary=payload.get("summary") or "AI assist completed",
+            summary=payload.get("summary") or "AI-avustus valmis",
         )
 
     @staticmethod
-    def _apply_minimum_confidence_fallback(
+    def _apply_confidence_rules(
         row: DetectedPoleRow,
         ai_confidence: float,
     ) -> float:
-        if ai_confidence > 0.0:
-            return ai_confidence
+        if ai_confidence <= 0.0:
+            confidence = AiAssistService._calculate_minimum_confidence(row)
+        else:
+            confidence = ai_confidence
 
+        confidence = max(0.0, min(confidence, 1.0))
+
+        if not row.pole_type:
+            confidence = min(confidence, 0.45)
+
+        if row.guying is None:
+            confidence = min(confidence, 0.65)
+
+        if row.span_m is None:
+            confidence = min(confidence, 0.65)
+
+        return confidence
+
+    @staticmethod
+    def _calculate_minimum_confidence(row: DetectedPoleRow) -> float:
         confidence = 0.0
 
         if row.pole_type:
@@ -254,18 +326,76 @@ Input:
         if row.review_status == "ok":
             confidence += 0.10
 
-        confidence = min(confidence, 0.85)
+        return min(confidence, 0.85)
+
+    @staticmethod
+    def _row_requires_manual_review(row: DetectedPoleRow) -> bool:
+        if row.review_status != "ok":
+            return True
 
         if not row.pole_type:
-            confidence = min(confidence, 0.45)
-
-        if row.guying is None:
-            confidence = min(confidence, 0.65)
+            return True
 
         if row.span_m is None:
-            confidence = min(confidence, 0.65)
+            return True
 
-        return confidence
+        if row.guying is None:
+            return True
+
+        return False
+
+    @staticmethod
+    def _ensure_domain_reasons(
+        row: DetectedPoleRow,
+        reasons: list[str],
+    ) -> list[str]:
+        clean_reasons = [reason for reason in reasons if reason]
+
+        if row.pole_type:
+            clean_reasons.append(f"Pylvästyyppi tunnistettu: {row.pole_type}")
+        else:
+            clean_reasons.append("Pylvästyyppi puuttuu – vaatii manuaalisen tarkistuksen")
+
+        if row.support_height_m is not None:
+            clean_reasons.append(f"Pylväskorkeus tunnistettu: {row.support_height_m} m")
+        else:
+            clean_reasons.append("Pylväskorkeus puuttuu tai on epävarma")
+
+        if row.span_m is not None:
+            clean_reasons.append(f"Vaiheväli tunnistettu: {row.span_m} m")
+        else:
+            clean_reasons.append("Vaiheväli puuttuu – kriittinen matching-tieto")
+
+        if row.guying is not None:
+            clean_reasons.append(f"Harustieto tunnistettu: {row.guying}")
+        else:
+            clean_reasons.append("Harustieto puuttuu – vaatii manuaalisen tarkistuksen")
+
+        if row.review_status != "ok":
+            clean_reasons.append(
+                f"Rivin tarkistustila on {row.review_status}, joten rivi vaatii tarkistuksen"
+            )
+
+        return AiAssistService._deduplicate_reasons(clean_reasons)
+
+    @staticmethod
+    def _deduplicate_reasons(reasons: list[str]) -> list[str]:
+        seen = set()
+        result = []
+
+        for reason in reasons:
+            normalized = reason.strip()
+
+            if not normalized:
+                continue
+
+            if normalized in seen:
+                continue
+
+            seen.add(normalized)
+            result.append(normalized)
+
+        return result
 
     @staticmethod
     def _fallback_result(
@@ -287,23 +417,25 @@ Input:
         reasons = [extra_reason]
 
         if not row.pole_type:
-            reasons.append("Pylvästyyppi puuttuu")
+            reasons.append("Pylvästyyppi puuttuu – vaatii manuaalisen tarkistuksen")
 
         if row.guying is None:
             reasons.append("Harustieto puuttuu – vaatii manuaalisen tarkistuksen")
 
         if row.span_m is None:
-            reasons.append("Vaiheväli puuttuu tai on epävarma")
+            reasons.append("Vaiheväli puuttuu – kriittinen matching-tieto")
 
         if row.review_status != "ok":
             reasons.append(f"Rivin tarkistustila on {row.review_status}")
+
+        reasons = AiAssistService._ensure_domain_reasons(row=row, reasons=reasons)
 
         return AiAssistItem(
             row_id=row.row_id,
             suggested_pole_type=row.pole_type,
             suggested_guying=row.guying,
             suggested_phase_spacing_m=row.span_m,
-            confidence=AiAssistService._apply_minimum_confidence_fallback(
+            confidence=AiAssistService._apply_confidence_rules(
                 row=row,
                 ai_confidence=min(row.confidence, 0.5),
             ),
