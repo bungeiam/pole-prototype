@@ -39,6 +39,7 @@
         <button id="analyzeBtn">Analysoi</button>
         <button id="loadPolesBtn">Lataa pylväsrivit</button>
         <button id="matchBtn">Matchaa</button>
+        <button id="aiAssistBtn">AI assist</button>
         <button id="calculateBtn">Laske massat</button>
         <button id="summaryBtn">Hae yhteenveto</button>
       </div>
@@ -47,7 +48,7 @@
     <div class="card">
       <h2>4. Tunnistetut pylväsrivit</h2>
       <div class="summary-subtle">
-        Taulukossa näkyvät tunnistetut tiedot sekä niiden tämänhetkinen match-, laskenta- ja korjaustila.
+        Taulukossa näkyvät tunnistetut tiedot sekä niiden tämänhetkinen match-, AI assist-, laskenta- ja korjaustila.
       </div>
       <div class="summary-table-wrap">
         <table id="polesTable">
@@ -65,6 +66,10 @@
               <th>Confidence</th>
               <th>Match</th>
               <th>Ehdotettu pooli</th>
+              <th>AI risk</th>
+              <th>AI confidence</th>
+              <th>Manuaalitarkistus</th>
+              <th>AI reasons</th>
               <th>Valittu pooli</th>
               <th>Laskenta</th>
               <th>Kokonaismassa (kg)</th>
