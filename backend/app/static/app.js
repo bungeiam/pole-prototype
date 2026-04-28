@@ -180,6 +180,11 @@ function renderPolesTable(rows) {
 
     tr.className = getAiRowClass(aiRisk);
 
+    const canAcceptSuggestion =
+      row.suggested_pool_id &&
+      row.match_status !== "matched" &&
+      row.correction_selected_pool_id !== row.suggested_pool_id;
+
     tr.innerHTML = `
       <td><button class="select-row-btn" data-row-id="${row.row_id}">Valitse</button></td>
       <td>${formatValue(row.source_row_number)}</td>
@@ -193,6 +198,13 @@ function renderPolesTable(rows) {
       <td>${formatConfidence(row.confidence)}</td>
       <td>${getStatusBadge(row.match_status)}</td>
       <td>${formatValue(row.suggested_pool_id)}</td>
+      <td>
+        ${
+          canAcceptSuggestion
+            ? `<button class="accept-suggestion-btn" data-row-id="${row.row_id}">Hyväksy ${escapeHtml(row.suggested_pool_id)}</button>`
+            : `<span class="summary-subtle">-</span>`
+        }
+      </td>
       <td>${getAiRiskBadge(aiRisk)}</td>
       <td>${formatConfidence(aiItem?.confidence)}</td>
       <td>${aiItem?.requires_manual_review ? getStatusBadge("review") : getStatusBadge("ok")}</td>
@@ -224,6 +236,59 @@ function renderPolesTable(rows) {
       editNote.value = row.correction_note ?? "";
     });
   });
+
+  document.querySelectorAll(".accept-suggestion-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const rowId = btn.dataset.rowId;
+      const row = currentPoles.find((item) => item.row_id === rowId);
+
+      if (!row || !row.suggested_pool_id) {
+        renderMessage("Ehdotettua poolia ei löytynyt.");
+        return;
+      }
+
+      await acceptSuggestedPool(row);
+    });
+  });
+}
+
+async function acceptSuggestedPool(row) {
+  try {
+    const docId = documentIdInput.value.trim();
+
+    if (!docId) {
+      throw new Error("Dokumentin ID puuttuu.");
+    }
+
+    const correctedFields = {
+      pole_code: row.pole_code ?? null,
+      pole_type: row.pole_type ?? null,
+      support_height_m: row.support_height_m ?? null,
+      span_m: row.span_m ?? null,
+      guying: row.guying ?? null,
+      quantity: row.quantity ?? 1,
+    };
+
+    correctionResult.textContent = `Hyväksytään ehdotettu pooli ${row.suggested_pool_id} riville ${row.source_row_number ?? row.row_id}...`;
+
+    await api(`/api/poles/${row.row_id}/corrections`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        corrected_fields: correctedFields,
+        selected_pool_id: row.suggested_pool_id,
+        note: `Hyväksytty käyttöliittymässä ehdotettu pooli ${row.suggested_pool_id}`,
+      }),
+    });
+
+    await refreshDocumentOutputs(docId);
+
+    correctionResult.textContent = `Ehdotettu pooli ${row.suggested_pool_id} hyväksytty ja laskenta päivitetty.`;
+  } catch (error) {
+    correctionResult.textContent = error.message;
+  }
 }
 
 function renderSummary(summary) {

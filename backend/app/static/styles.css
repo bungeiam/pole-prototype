@@ -372,3 +372,18 @@ code.inline-code {
     flex-direction: column;
   }
 }
+
+.accept-suggestion-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: #0f766e;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.accept-suggestion-btn:hover {
+  background: #115e59;
+}
