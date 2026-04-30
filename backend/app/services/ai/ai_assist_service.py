@@ -21,6 +21,7 @@ class AiAssistService:
             return AiAssistService._fallback_result(
                 document_id=document_id,
                 rows=rows,
+                matches=matches,
                 summary="AI not enabled",
             )
 
@@ -32,17 +33,24 @@ class AiAssistService:
             return AiAssistService._fallback_result(
                 document_id=document_id,
                 rows=rows,
+                matches=matches,
                 summary="Azure OpenAI configuration missing",
             )
 
         try:
             prompt = AiAssistService._build_prompt(rows, matches)
             payload = AiAssistService._call_azure_openai(prompt)
-            return AiAssistService._parse_ai_response(document_id, rows, payload)
+            return AiAssistService._parse_ai_response(
+                document_id=document_id,
+                rows=rows,
+                matches=matches,
+                payload=payload,
+            )
         except Exception as exc:
             return AiAssistService._fallback_result(
                 document_id=document_id,
                 rows=rows,
+                matches=matches,
                 summary=f"AI assist failed: {exc}",
             )
 
@@ -104,20 +112,7 @@ DOMAIN-SÄÄNNÖT:
 8. Jos matcher-status on ambiguous, selitä AINA mikä tekee vastaavuudesta osittaisen.
 9. Jos matcher-status on unmatched, selitä AINA miksi riviä ei voitu yhdistää.
 10. Älä käytä pelkkää ilmaisua "Osittainen vastaavuus" ilman tarkempaa selitystä.
-
-REASONS-LISTAN PITÄÄ KERTOA SELKEÄSTI:
-
-- mitä tietoja riviltä löytyi
-- mitä kriittisiä tietoja puuttuu
-- mitä matcher ehdottaa
-- mikä täsmää ehdotettuun pooliin, jos tämä voidaan päätellä
-- mikä ei täsmää tai on epävarmaa
-- miksi rivi vaatii tai ei vaadi manuaalista tarkistusta
-
-Jos käytössä ei ole varsinaista poolin teknistä dataa, älä väitä varmasti että kenttä täsmää pooliin.
-Voit kuitenkin sanoa esimerkiksi:
-- "Matcher ehdottaa poolia P002, mutta vastaavuus on merkitty osittaiseksi."
-- "Tarkka poikkeava kenttä ei selviä inputista, joten asiantuntijan tulee tarkistaa ehdotus."
+11. Jos suggested_pool_id on null, älä sano että matcher ehdottaa poolia.
 
 CONFIDENCE-SÄÄNNÖT:
 
@@ -225,9 +220,11 @@ Input:
     def _parse_ai_response(
         document_id: str,
         rows: list[DetectedPoleRow],
+        matches: list[PoleMatch],
         payload: dict,
     ) -> AiAssistResult:
         row_by_id = {row.row_id: row for row in rows}
+        match_by_row_id = {match.row_id: match for match in matches}
         valid_row_ids = set(row_by_id.keys())
         items: list[AiAssistItem] = []
 
@@ -238,18 +235,29 @@ Input:
                 continue
 
             row = row_by_id[row_id]
+            match = match_by_row_id.get(row_id)
+
             ai_confidence = float(item.get("confidence") or 0.0)
             confidence = AiAssistService._apply_confidence_rules(
                 row=row,
+                match=match,
                 ai_confidence=ai_confidence,
             )
 
             reasons = list(item.get("reasons") or [])
-            reasons = AiAssistService._ensure_domain_reasons(row=row, reasons=reasons)
+            reasons = AiAssistService._sanitize_ai_reasons(
+                reasons=reasons,
+                match=match,
+            )
+            reasons = AiAssistService._ensure_domain_reasons(
+                row=row,
+                match=match,
+                reasons=reasons,
+            )
 
             requires_manual_review = bool(item.get("requires_manual_review", True))
 
-            if AiAssistService._row_requires_manual_review(row):
+            if AiAssistService._row_requires_manual_review(row=row, match=match):
                 requires_manual_review = True
 
             items.append(
@@ -268,9 +276,11 @@ Input:
 
         for row in rows:
             if row.row_id not in existing_ids:
+                match = match_by_row_id.get(row.row_id)
                 items.append(
                     AiAssistService._fallback_item(
                         row=row,
+                        match=match,
                         extra_reason="AI ei palauttanut analyysiä tälle riville",
                     )
                 )
@@ -282,8 +292,43 @@ Input:
         )
 
     @staticmethod
+    def _sanitize_ai_reasons(
+        reasons: list[str],
+        match: PoleMatch | None,
+    ) -> list[str]:
+        cleaned: list[str] = []
+
+        for reason in reasons:
+            if not reason:
+                continue
+
+            normalized = str(reason).strip()
+
+            if not normalized:
+                continue
+
+            if (
+                match
+                and match.suggested_pool_id is None
+                and "Matcher ehdottaa poolia" in normalized
+            ):
+                continue
+
+            if (
+                match
+                and match.status == "unmatched"
+                and "osittaiseksi" in normalized.lower()
+            ):
+                continue
+
+            cleaned.append(normalized)
+
+        return cleaned
+
+    @staticmethod
     def _apply_confidence_rules(
         row: DetectedPoleRow,
+        match: PoleMatch | None,
         ai_confidence: float,
     ) -> float:
         if ai_confidence <= 0.0:
@@ -301,6 +346,12 @@ Input:
 
         if row.span_m is None:
             confidence = min(confidence, 0.65)
+
+        if match and match.status == "unmatched":
+            confidence = min(confidence, 0.50)
+
+        if match and match.status == "ambiguous":
+            confidence = min(confidence, 0.75)
 
         return confidence
 
@@ -329,7 +380,10 @@ Input:
         return min(confidence, 0.85)
 
     @staticmethod
-    def _row_requires_manual_review(row: DetectedPoleRow) -> bool:
+    def _row_requires_manual_review(
+        row: DetectedPoleRow,
+        match: PoleMatch | None,
+    ) -> bool:
         if row.review_status != "ok":
             return True
 
@@ -342,11 +396,15 @@ Input:
         if row.guying is None:
             return True
 
+        if match and match.status in {"ambiguous", "unmatched"}:
+            return True
+
         return False
 
     @staticmethod
     def _ensure_domain_reasons(
         row: DetectedPoleRow,
+        match: PoleMatch | None,
         reasons: list[str],
     ) -> list[str]:
         clean_reasons = [reason for reason in reasons if reason]
@@ -370,6 +428,48 @@ Input:
             clean_reasons.append(f"Harustieto tunnistettu: {row.guying}")
         else:
             clean_reasons.append("Harustieto puuttuu – vaatii manuaalisen tarkistuksen")
+
+        if match:
+            if match.status == "matched":
+                clean_reasons.append("Matcher löysi varman vastaavuuden.")
+
+                if match.suggested_pool_id:
+                    clean_reasons.append(
+                        f"Matcherin ehdottama pooli: {match.suggested_pool_id}"
+                    )
+
+            elif match.status == "ambiguous":
+                clean_reasons.append(
+                    "Matcher löysi vain osittaisen vastaavuuden, joten rivi vaatii asiantuntijan tarkistuksen."
+                )
+
+                if match.suggested_pool_id:
+                    clean_reasons.append(
+                        f"Matcherin ehdottama tarkistettava pooli: {match.suggested_pool_id}"
+                    )
+                else:
+                    clean_reasons.append(
+                        "Matcher ei antanut yksiselitteistä pooliehdotusta."
+                    )
+
+                if match.reason:
+                    clean_reasons.append(f"Matcherin syy: {match.reason}")
+
+            elif match.status == "unmatched":
+                clean_reasons.append(
+                    "Matcher ei löytänyt hyväksyttävää poolivastaavuutta."
+                )
+
+                if match.reason:
+                    clean_reasons.append(f"Matcherin syy: {match.reason}")
+
+                if match.alternatives:
+                    clean_reasons.append(
+                        "Mahdollisia lähimpiä vaihtoehtoja tarkistukseen: "
+                        + ", ".join(match.alternatives)
+                    )
+        else:
+            clean_reasons.append("Matcher-tulosta ei ole saatavilla tälle riville.")
 
         if row.review_status != "ok":
             clean_reasons.append(
@@ -401,19 +501,30 @@ Input:
     def _fallback_result(
         document_id: str,
         rows: list[DetectedPoleRow],
+        matches: list[PoleMatch],
         summary: str,
     ) -> AiAssistResult:
+        match_by_row_id = {match.row_id: match for match in matches}
+
         return AiAssistResult(
             document_id=document_id,
             summary=summary,
             items=[
-                AiAssistService._fallback_item(row=row, extra_reason=summary)
+                AiAssistService._fallback_item(
+                    row=row,
+                    match=match_by_row_id.get(row.row_id),
+                    extra_reason=summary,
+                )
                 for row in rows
             ],
         )
 
     @staticmethod
-    def _fallback_item(row: DetectedPoleRow, extra_reason: str) -> AiAssistItem:
+    def _fallback_item(
+        row: DetectedPoleRow,
+        match: PoleMatch | None,
+        extra_reason: str,
+    ) -> AiAssistItem:
         reasons = [extra_reason]
 
         if not row.pole_type:
@@ -428,7 +539,11 @@ Input:
         if row.review_status != "ok":
             reasons.append(f"Rivin tarkistustila on {row.review_status}")
 
-        reasons = AiAssistService._ensure_domain_reasons(row=row, reasons=reasons)
+        reasons = AiAssistService._ensure_domain_reasons(
+            row=row,
+            match=match,
+            reasons=reasons,
+        )
 
         return AiAssistItem(
             row_id=row.row_id,
@@ -437,6 +552,7 @@ Input:
             suggested_phase_spacing_m=row.span_m,
             confidence=AiAssistService._apply_confidence_rules(
                 row=row,
+                match=match,
                 ai_confidence=min(row.confidence, 0.5),
             ),
             requires_manual_review=True,
