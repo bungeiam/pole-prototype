@@ -1,16 +1,70 @@
+﻿# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
 .venv/
-env/
 venv/
+env/
+
+# IDE / OS
 .idea/
 .vscode/
-.env
 .DS_Store
 Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Local runtime storage
 backend/storage/uploads/*
 backend/storage/metadata/*
 backend/storage/exports/*
 !backend/storage/uploads/.gitkeep
 !backend/storage/metadata/.gitkeep
 !backend/storage/exports/.gitkeep
+
+# Demo / customer / sensitive input data
+backend/data/demo_input/*
+backend/data/demo_output/*
+backend/data/document_intelligence/*
+backend/data/**/*.pdf
+backend/data/**/*.PDF
+backend/data/**/*.xls
+backend/data/**/*.XLS
+backend/data/**/*.xlsx
+backend/data/**/*.XLSX
+backend/data/**/*.doc
+backend/data/**/*.DOC
+backend/data/**/*.docx
+backend/data/**/*.DOCX
+
+# Azure Document Intelligence outputs
+*.di.json
+*.di.txt
+*.di.tables.txt
+
+# Generated reports / exports
+backend/data/**/*.html
+backend/data/**/*.csv
+backend/data/**/*.json
+backend/data/**/*.zip
+
+# Keep safe example data if wanted
+!backend/data/pole_pool.csv
+!backend/data/sample_offer_rows.csv
+
+# Local test files
+test_pylvaat.pdf
