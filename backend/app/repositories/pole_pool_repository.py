@@ -6,8 +6,15 @@ from app.models.match import PolePoolItem
 
 
 class PolePoolRepository:
-    def __init__(self, csv_path: str = "data/pole_pool.csv") -> None:
-        self.csv_path = Path(csv_path)
+    def __init__(self, csv_path: str | None = None) -> None:
+        if csv_path:
+            self.csv_path = Path(csv_path)
+        else:
+            # backend/app/repositories/pole_pool_repository.py
+            # parents[2] = backend/app
+            # parents[3] = backend
+            backend_dir = Path(__file__).resolve().parents[2]
+            self.csv_path = backend_dir / "data" / "pole_pool.csv"
 
     @staticmethod
     def _to_optional_float(value) -> float | None:
@@ -37,14 +44,12 @@ class PolePoolRepository:
             items.append(
                 PolePoolItem(
                     pool_id=str(row["pool_id"]),
-                    pole_type=str(row["pole_type"]),
+                    pole_type=str(row["pole_type"]).strip(),
                     support_height_m=float(row["support_height_m"]),
                     max_span_m=self._to_optional_float(row.get("max_span_m")),
                     guying=self._to_optional_str(row.get("guying")),
                     unit_mass_kg=float(row["unit_mass_kg"]),
                     material_code=self._to_optional_str(row.get("material_code")),
-
-                    # ✅ UUSI: vaihevälikentät (fallback-safe)
                     phase_spacing_left_mm=self._to_optional_float(row.get("phase_spacing_left_mm")),
                     phase_spacing_right_mm=self._to_optional_float(row.get("phase_spacing_right_mm")),
                     phase_spacing_text=self._to_optional_str(row.get("phase_spacing_text")),

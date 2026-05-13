@@ -293,7 +293,20 @@ class PoleExtractionService:
 
         for raw_row in raw_rows:
             data = raw_row["data"]
-            review_reasons: list[str] = []
+
+            incoming_review_reasons = data.get("_review_reasons", [])
+            if isinstance(incoming_review_reasons, list):
+                review_reasons: list[str] = list(incoming_review_reasons)
+            else:
+                review_reasons = []
+
+            drawing_status = str(data.get("drawing_status") or "").strip().lower()
+            drawing_match_reason = data.get("drawing_match_reason")
+
+            if drawing_status in {"ambiguous", "missing"}:
+                reason = drawing_match_reason or "Piirustusvastine vaatii asiantuntijan tarkistuksen."
+                if reason not in review_reasons:
+                    review_reasons.append(reason)
 
             pole_code, pole_code_source, pole_code_alias = cls._find_value(data, "pole_code")
             pole_type_raw, pole_type_source, pole_type_alias = cls._find_value(data, "pole_type")
@@ -363,6 +376,14 @@ class PoleExtractionService:
                 quantity=quantity_int,
                 review_reasons=review_reasons,
             )
+
+            if drawing_status == "ambiguous":
+                review_status = "review"
+                confidence = min(confidence, 0.65)
+
+            if drawing_status == "missing":
+                review_status = "review"
+                confidence = min(confidence, 0.55)
 
             enriched_raw_data = dict(data)
             enriched_raw_data["_review_reasons"] = review_reasons

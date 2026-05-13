@@ -16,3 +16,5 @@ CALCULATIONS_BY_DOCUMENT: dict[str, list[MassCalculationResult]] = {}
 CORRECTIONS_BY_ROW: dict[str, UserCorrection] = {}
 
 AI_ASSISTS_BY_DOCUMENT: dict[str, AiAssistResult] = {}
+
+PACKAGES: dict[str, dict] = {}
